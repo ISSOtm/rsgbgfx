@@ -1,6 +1,11 @@
+mod args;
+use args::{parse_slices, process_leading_at};
+
 mod img;
 mod logic;
-use logic::process_file;
+use logic::{process_file, Params};
+//mod tile;
+//use tile::Tile;
 mod util;
 
 use clap::{clap_app, crate_authors, crate_description, crate_version};
@@ -20,15 +25,14 @@ fn main() {
     (@arg base: -b --base [id] {util::parse_byte} default_value[0] "The base ID for tiles")
     (@arg bgp: -B --bgp [palette] {util::parse_byte} "This image's DMG palette")
     (@arg bpp: -d --depth [bpp] possible_value[1 2] default_value[2] "Number of bits per pixel")
-    (@arg whitespace: -W --whitespace [action] possible_value[keep start end all] default_value[keep] "Whether to truncate all-white (color 0) tiles")
     (@arg height: -h --height [height] default_value[1] "Height in tiles of a \"block\"")
     (@arg width: -w --width [width] default_value[1] "Width in tiles of a \"block\"")
     (@arg out_tiles: -o --"out-tiles" [path] "File name to output the tiles to")
-    (@arg in_pal: -P --"in-palette" [path] "File name to read palettes from")
+    (@arg in_pal: -P --"in-palette" [palette] "Palette to use, or \"@path\" to read a file")
     (@arg out_pal: -p --"out-palette" [path] "File name to output the palette to")
     (@arg in_map: -T --"in-tilemap" [path] "File name to read a tilemap from")
     (@arg out_map: -t --"out-tilemap" [path] "File name to output the tilemap to")
-    // TODO: add input "slice" spec for meta-sprites (see Pino's `.ec` format in Libbet)
+    (@arg in_slices: -S --slices [slices] "Slices to use, or \"@path\" to read a file")
     (@arg path: * "Path to the input image")
     );
 
@@ -54,6 +58,17 @@ fn main() {
         Err(e) => e.exit(),
     };
 
+    let slices = args
+        .value_of_os("in_slices")
+        .map(|arg| match process_leading_at(arg) {
+            Some(Ok(mut file)) => parse_slices(&mut file),
+            Some(Err(err)) => {
+                eprintln!("Error opening slices file: {}", err);
+                std::process::exit(1);
+            }
+            None => parse_slices(&mut arg.to_string_lossy().as_bytes()),
+        });
+
     /* Before <path> was made required, this is how its lack was handled...
     let path = match args.values_of("path") {
         Some(path) => path,
@@ -65,17 +80,14 @@ fn main() {
         }
     };
     */
-    let path = args.value_of_os("path").unwrap();
+    let params = Params {
+        path: args.value_of_os("path").unwrap(),
+        slices,
+    };
 
     // Remember: use `String::from_utf8_lossy` to display file names
-    if let Err(err) = process_file(path) {
+    if let Err(err) = process_file(params) {
         let mut stderr = io::stderr();
-        writeln!(
-            stderr,
-            "Error processing {}: {}",
-            path.to_string_lossy(),
-            err
-        )
-        .unwrap();
+        writeln!(stderr, "error: {}", err).unwrap();
     }
 }

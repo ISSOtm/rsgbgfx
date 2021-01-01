@@ -37,9 +37,19 @@ mod color {
 
 #[derive(Debug)]
 pub struct Image {
-    width: u32,  // Size in tiles
-    height: u32, // Size in tiles
+    width: u32,  // Size in pixels
+    height: u32, // Size in pixels
     pixels: Vec<Color>,
+}
+
+impl Image {
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
 }
 
 pub trait ImageReader<R: Read> {
