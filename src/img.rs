@@ -1,5 +1,5 @@
 mod png;
-pub use self::png::PngReader;
+pub use self::png::{PngReadError, PngReader};
 
 use std::io::Read;
 

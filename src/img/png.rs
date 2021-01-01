@@ -1,7 +1,9 @@
-
 use super::{Color, Image, ImageReader};
 use png::{ColorType, Decoder, DecodingError, Reader, Transformations};
 use std::convert::{TryFrom, TryInto};
+use std::error;
+use std::fmt::Display;
+use std::fmt::{self, Formatter};
 use std::io::Read;
 
 pub struct PngReader<R: Read> {
@@ -206,4 +208,26 @@ mod iter {
 pub enum PngReadError {
     DecodingError(DecodingError),
     TooBig(u32, u32), // width, height
+}
+
+impl Display for PngReadError {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+        use PngReadError::*;
+
+        match self {
+            DecodingError(err) => err.fmt(fmt),
+            TooBig(w, h) => write!(fmt, "Image too big! ({} px wide, {} px tall)", w, h),
+        }
+    }
+}
+
+impl error::Error for PngReadError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        use PngReadError::*;
+
+        match self {
+            DecodingError(err) => Some(err),
+            TooBig(..) => None,
+        }
+    }
 }
