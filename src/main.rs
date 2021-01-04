@@ -1,11 +1,9 @@
 mod args;
-use args::{parse_slices, process_leading_at};
 
 mod img;
 mod logic;
-use logic::{process_file, Params};
-//mod tile;
-//use tile::Tile;
+use logic::Params;
+mod tile;
 mod util;
 
 use clap::{clap_app, crate_authors, crate_description, crate_version};
@@ -20,6 +18,7 @@ fn main() {
     (@arg no_discard: -D --"no-discard" "Disables discarding identical tiles (implies -V and -H)")
     (@arg no_horiz_flip: -H --"no-horizontal-flip" "Disables discarding tiles by flipping them horizontally")
     (@arg no_vert_flip: -V --"no-vertical-flip" "Disables discarding tiles by flipping them vertically")
+    (@arg verbose: -v --verbose "Enable describing actions taken to stderr, repeat for more details")
     (@arg sprite: -s --sprite [color] #{0,1} "Enable OAM mode, and possibly force the background color") // TODO: "#n" to pick the nth color in the input palette, otherwise a color
     (@arg fuzzy: -f --fuzzy [threshold] #{0,1} "Treat colors similar enough as identical")
     (@arg base: -b --base [id] {util::parse_byte} default_value[0] "The base ID for tiles")
@@ -58,16 +57,34 @@ fn main() {
         Err(e) => e.exit(),
     };
 
-    let slices = args
-        .value_of_os("in_slices")
-        .map(|arg| match process_leading_at(arg) {
-            Some(Ok(mut file)) => parse_slices(&mut file),
+    // clap has checked those args already
+    let block_height = util::parse_byte(args.value_of("height").unwrap()).unwrap();
+    let block_width = util::parse_byte(args.value_of("width").unwrap()).unwrap();
+
+    let slice_ret = args.value_of_os("in_slices").map(|arg| {
+        match args::process_leading_at(arg) {
+            Some(Ok(file)) => args::parse_slices(file, block_width, block_height),
             Some(Err(err)) => {
                 eprintln!("Error opening slices file: {}", err);
                 std::process::exit(1);
             }
-            None => parse_slices(&mut arg.to_string_lossy().as_bytes()),
-        });
+            None => args::parse_slices(arg.to_string_lossy().as_bytes(), block_width, block_height),
+        }
+        .unwrap_or_else(|err| {
+            eprintln!("error parsing slices: {}", err);
+            std::process::exit(1);
+        })
+    });
+    let (slices, nb_blocks) = match slice_ret {
+        Some((slices, nb_blocks)) => {
+            if nb_blocks == 0 {
+                todo!()
+            } else {
+                (Some(slices), nb_blocks)
+            }
+        }
+        None => (None, 0),
+    };
 
     /* Before <path> was made required, this is how its lack was handled...
     let path = match args.values_of("path") {
@@ -82,11 +99,14 @@ fn main() {
     */
     let params = Params {
         path: args.value_of_os("path").unwrap(),
+        block_height,
+        block_width,
         slices,
+        nb_blocks,
     };
 
     // Remember: use `String::from_utf8_lossy` to display file names
-    if let Err(err) = process_file(params) {
+    if let Err(err) = logic::process_file(params) {
         let mut stderr = io::stderr();
         writeln!(stderr, "error: {}", err).unwrap();
     }

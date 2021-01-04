@@ -10,7 +10,6 @@ pub fn process_leading_at(arg: &OsStr) -> Option<io::Result<File>> {
     #[cfg(unix)]
     {
         use std::os::unix::ffi::OsStrExt;
-        use std::str::from_utf8;
 
         let bytes = arg.as_bytes();
         debug_assert_eq!('@'.len_utf8(), 1);

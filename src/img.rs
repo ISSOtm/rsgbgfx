@@ -2,9 +2,12 @@ mod png;
 pub use self::png::{PngReadError, PngReader};
 
 use std::io::Read;
+use std::ops::Index;
 
 pub use color::Color;
 mod color {
+    use std::fmt::{self, Display, Formatter, LowerHex, UpperHex};
+
     #[derive(Debug)]
     pub struct Color {
         red: u8,
@@ -33,6 +36,36 @@ mod color {
             (gray, gray, gray)
         }
     }
+
+    impl Display for Color {
+        fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+            write!(
+                fmt,
+                "{}, {}, {}, {}",
+                self.red, self.green, self.blue, self.alpha
+            )
+        }
+    }
+
+    impl LowerHex for Color {
+        fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+            write!(
+                fmt,
+                "#{:02x}{:02x}{:02x}{:02x}",
+                self.red, self.green, self.blue, self.alpha
+            )
+        }
+    }
+
+    impl UpperHex for Color {
+        fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+            write!(
+                fmt,
+                "#{:02X}{:02X}{:02X}{:02X}",
+                self.red, self.green, self.blue, self.alpha
+            )
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -49,6 +82,27 @@ impl Image {
 
     pub fn height(&self) -> u32 {
         self.height
+    }
+}
+
+impl Index<(u32, u32)> for Image {
+    type Output = Color;
+
+    fn index(&self, (x, y): (u32, u32)) -> &Self::Output {
+        assert!(
+            x < self.width,
+            "{} is larger than the image's width ({} px)",
+            x,
+            self.width
+        );
+        assert!(
+            y < self.height,
+            "{} is larger than the image's height ({} px)",
+            y,
+            self.height
+        );
+        // We can confidently cast to `usize`, since we know the dimensions are valid
+        &self.pixels[(x + y * self.width) as usize]
     }
 }
 

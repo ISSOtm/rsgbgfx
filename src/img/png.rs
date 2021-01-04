@@ -44,7 +44,12 @@ impl<R: Read> ImageReader<R> for PngReader<R> {
                 palette.push(
                     info.trns
                         .as_ref()
-                        .map_or_else(|| Color::rgb_to_rgba((r, g, b)), |trns| (r, g, b, trns[i])),
+                        // The tRNS chunk shall not contain more alpha values than there are palette
+                        // entries, but a tRNS chunk may contain fewer values than there are palette
+                        // entries. In this case, the alpha value for all remaining palette entries
+                        // is assumed to be 255.
+                        .and_then(|trns| trns.get(i))
+                        .map_or_else(|| Color::rgb_to_rgba((r, g, b)), |alpha| (r, g, b, *alpha)),
                 );
             }
             palette
