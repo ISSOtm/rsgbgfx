@@ -31,6 +31,10 @@ pub fn parse_byte(string: &str) -> Result<u8, ByteParseError> {
             chars.next();
             (16, false)
         }
+        Some('%') => {
+            chars.next();
+            (2, false)
+        }
         Some(_) => (10, true),
         None => (10, false),
     };
@@ -129,6 +133,16 @@ mod tests {
         }
         for i in -128..=0 {
             assert_eq!(parse_byte(format!("-${:x}", -i).as_str()).unwrap(), i as u8);
+        }
+    }
+
+    #[test]
+    fn parse_bin() {
+        for i in 0..=255 {
+            assert_eq!(parse_byte(format!("%{:b}", i).as_str()).unwrap(), i as u8);
+        }
+        for i in -128..=0 {
+            assert_eq!(parse_byte(format!("-%{:b}", -i).as_str()).unwrap(), i as u8);
         }
     }
 
