@@ -1,11 +1,13 @@
 mod slices;
 pub use slices::{parse_slices, Slice};
+pub mod palette;
 
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io;
 
-/// If the `OsStr` begins with an `@`,
+/// If the `OsStr` begins with an `@`, treat the rest as a path, and try opening that file.
+/// Otherwise, return `None`.
 pub fn process_leading_at(arg: &OsStr) -> Option<io::Result<File>> {
     #[cfg(unix)]
     {

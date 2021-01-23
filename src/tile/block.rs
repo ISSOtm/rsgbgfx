@@ -3,13 +3,17 @@ use std::ops::Index;
 
 #[derive(Debug)]
 pub struct Block<'a> {
+    x: u32,
+    y: u32,
     tiles: Vec<Tile<'a>>,
     width: usize,
 }
 
 impl<'a> Block<'a> {
-    pub fn new(width: usize) -> Self {
+    pub fn new(width: usize, (x, y): (u32, u32)) -> Self {
         Self {
+            x,
+            y,
             tiles: vec![],
             width,
         }

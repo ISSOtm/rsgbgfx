@@ -8,7 +8,10 @@ pub use color::Color;
 mod color {
     use std::fmt::{self, Display, Formatter, LowerHex, UpperHex};
 
-    #[derive(Debug)]
+    // Implementing `PartialEq` in this way makes identical colors with a different palette index
+    // different. This is intentional, so that a palette may contain duplicates of a given color
+    // if the user insists on it (either via a PNG palette, or a CLI specification)
+    #[derive(Debug, PartialEq, Eq)]
     pub struct Color {
         red: u8,
         green: u8,
@@ -34,6 +37,38 @@ mod color {
 
         pub fn gray_to_rgb(gray: u8) -> (u8, u8, u8) {
             (gray, gray, gray)
+        }
+
+        pub fn luma_chroma(&self) -> (f32, f32, f32) {
+            let (red, green, blue) = (
+                f32::from(self.red),
+                f32::from(self.green),
+                f32::from(self.blue),
+            );
+            // Luminance, as defined by CCIR 601
+            let luma = 0.299 * red + 0.587 * green + 0.114 * blue;
+            (luma, blue - luma, red - luma)
+        }
+
+        pub fn distance(&self, rhs: &Color) -> u8 {
+            // Get YUV (luma, blue chroma, red chroma) for both sides
+            let (ly, lu, lv) = self.luma_chroma();
+            let (ry, ru, rv) = rhs.luma_chroma();
+            let dist = (((ly - ry).powi(2) + (lu - ru).powi(2) + (lv - rv).powi(2)) / 3.0)
+                .sqrt()
+                .round();
+            assert!(
+                0.0 <= dist && dist <= 255.0,
+                "Color distance not in u8 range! ({})",
+                dist
+            );
+            dist as u8
+        }
+    }
+
+    impl Default for Color {
+        fn default() -> Self {
+            Self::new((0, 0, 0, 255), None)
         }
     }
 

@@ -1,6 +1,6 @@
 use crate::args::Slice;
 use crate::img::{self, ImageReader, PngReader};
-use crate::tile::{Block, Tile};
+use crate::tile::{Block, Palette, Tile};
 use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
@@ -8,16 +8,45 @@ use std::io;
 use std::path::{self, Path};
 
 pub struct Params<'a, P: AsRef<Path> + ?Sized> {
+    pub verbosity: u64,
+
     pub path: &'a P,
+    pub tiles_path: Option<&'a P>,
+    pub map_path: Option<&'a P>,
+    pub attr_path: Option<&'a P>,
 
     pub block_height: u8,
     pub block_width: u8,
 
     pub slices: Option<Vec<Slice>>, // x, y (in pixels), w, h (in tiles)
     pub nb_blocks: usize,           // Hint to allocate the `Vec` up-front
+    pub palette: Option<Palette>,
+
+    pub no_discard: bool,
+    pub no_horiz_flip: bool,
+    pub no_vert_flip: bool,
+    pub fuzziness: Fuzziness,
+    pub base: u8,
+    pub bgp: Option<u8>,
+    pub bpp: u8,
+}
+
+#[derive(Debug)]
+pub enum Fuzziness {
+    /// Not specified on CLI
+    /// Differs from `Threshold(0)` in that even identical colors won't be merged
+    Strict,
+    /// Specified on the CLI without an argument
+    Closest,
+    /// Specified on the CLI with an argument
+    Threshold(u8),
 }
 
 pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), ProcessingError> {
+    let (blk_width, blk_height) = (
+        u32::from(params.block_width),
+        u32::from(params.block_height),
+    );
     let file = File::open(params.path)
         .map_err(|err| ProcessingError::Io(params.path.as_ref().display(), err))?;
 
@@ -41,16 +70,15 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
             if height % 8 != 0 {
                 return Err(ProcessingError::HeightNotTiled(height));
             }
-            if width % (params.block_width as u32) != 0 {
+            if width % (blk_width) != 0 {
                 return Err(ProcessingError::WidthNotBlock(width, params.block_width));
             }
-            if height % (params.block_height as u32) != 0 {
+            if height % (blk_height) != 0 {
                 return Err(ProcessingError::HeightNotBlock(height, params.block_height));
             }
             (
                 whole_image.iter(),
-                ((width / params.block_width as u32) * (height / params.block_height as u32))
-                    as usize,
+                ((width / blk_width) * (height / blk_height)) as usize,
             )
         }
     };
@@ -62,21 +90,28 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
         // These should have been checked at slice creation
         debug_assert_ne!(slice.height, 0);
         debug_assert_ne!(slice.width, 0);
-        debug_assert_eq!(slice.height % params.block_height as u32, 0);
-        debug_assert_eq!(slice.width % params.block_width as u32, 0);
+        debug_assert_eq!(slice.height % blk_height, 0);
+        debug_assert_eq!(slice.width % blk_width, 0);
 
         // TODO: Check starting and ending boundaries
 
         let base = blocks.len(); // Base index of blocks about to be added
-        let height_blk = (slice.height / params.block_height as u32) as usize; // Slice's height in blocks
-        let nb_blocks = height_blk * (slice.width / params.block_width as u32) as usize; // Amount of blocks to add
-        blocks.resize_with(base + nb_blocks, || Block::new(params.block_width.into()));
+        let height_blk = slice.height / blk_height; // Slice's height in blocks
+        let width_blk = slice.width / blk_width; // Slice's width in blocks
+        let nb_blocks = (height_blk * width_blk) as usize; // Amount of blocks to add
+        let mut coords = (0..width_blk).flat_map(|x| {
+            (0..height_blk)
+                .map(move |y| (slice.x + x * 8 * blk_width, slice.y + y * 8 * blk_height))
+        });
+        blocks.resize_with(base + nb_blocks, || {
+            Block::new(params.block_width.into(), coords.next().unwrap())
+        });
 
         // Generate tiles vertically first, as 8x16 mode requires contiguous vertical tile IDs
         for ofs_x in 0..slice.width {
             for ofs_y in 0..slice.height {
                 let tile = Tile::from_image(&img, slice.x + ofs_x * 8, slice.y + ofs_y * 8);
-                let idx = ofs_x as usize * height_blk + ofs_y as usize;
+                let idx = ofs_x as usize * height_blk as usize + ofs_y as usize;
                 assert!(
                     idx < nb_blocks,
                     "Index {} is greater than expected {} blocks",
@@ -88,10 +123,18 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
         }
     }
 
-    for block in &blocks {
-        debug_assert_eq!(block.height(), params.block_height.into());
-        println!("Blk{{...}}");
-    }
+    // Reduce colors depending on fuzziness
+    // Do this before palette allocation to reduce tiles to 4 colors, so that discarding
+    // opportunities may be used as palette allocation hints
+    // If a palette was specified on the command-line, ensure also that all colors match it
+    // TODO
+
+    // Index tiles based on their 4 colors
+    // This is used to check that all input tiles are 4 colors,
+    // and to make it easier to permute colors in the tile for palette allocation
+    // Additionally, if a palette was specified on the command-line, check that it contains all
+    // of the image's colors; if not, report the `--fuzzy` radius that would make it work.
+
     todo!();
     Ok(())
 }

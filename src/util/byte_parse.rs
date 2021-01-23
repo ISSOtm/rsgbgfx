@@ -20,11 +20,18 @@ pub fn parse_byte(string: &str) -> Result<u8, ByteParseError> {
     let (radix, got_digit) = match chars.peek() {
         Some('0') => {
             chars.next();
-            if let Some('X') | Some('x') = chars.peek() {
-                chars.next();
-                (16, false)
-            } else {
-                (8, true) // Accept "0"...
+            match chars.peek() {
+                Some('X') | Some('x') => {
+                    chars.next();
+                    (16, false)
+                }
+                Some('B') | Some('b') => {
+                    chars.next();
+                    (2, false)
+                }
+                _ => {
+                    (8, true) // Accept "0"...
+                }
             }
         }
         Some('$') => {
@@ -138,6 +145,24 @@ mod tests {
 
     #[test]
     fn parse_bin() {
+        for i in 0..=255 {
+            assert_eq!(parse_byte(format!("0B{:b}", i).as_str()).unwrap(), i as u8);
+            assert_eq!(parse_byte(format!("0b{:b}", i).as_str()).unwrap(), i as u8);
+        }
+        for i in -128..=0 {
+            assert_eq!(
+                parse_byte(format!("-0b{:b}", -i).as_str()).unwrap(),
+                i as u8
+            );
+            assert_eq!(
+                parse_byte(format!("-0B{:b}", -i).as_str()).unwrap(),
+                i as u8
+            );
+        }
+    }
+
+    #[test]
+    fn parse_percent() {
         for i in 0..=255 {
             assert_eq!(parse_byte(format!("%{:b}", i).as_str()).unwrap(), i as u8);
         }

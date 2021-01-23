@@ -1,0 +1,255 @@
+.Dd January 5, 2021
+.Dt RSGBGFX 1
+.Os
+.Sh NAME
+.Nm rsgbgfx
+.\" TODO: pull description from crate instead
+.Nd Converts images to Game Boy graphics formats
+.Sh SYNOPSIS
+.Nm
+.Op Fl DHVv
+.Op Fl a Ar path
+.Op Fl B Ar palette
+.Op Fl b Ar id
+.Op Fl d Ar bpp
+.Op Fl f Op Ar threshold
+.Op Fl h Ar height
+.Op Fl o Ar path
+.Op Fl P Ar palette
+.Op Fl p Ar path
+.Op Fl t Ar path
+.Op Fl S Ar slices
+.Op Fl s Op Ar color
+.Op Fl w Ar width
+.Ar image
+.Nm
+.Fl Fl version
+.Nm
+.Fl Fl help
+.Sh DESCRIPTION
+The
+.Nm
+program converts PNG images into Game Boy tile data, tilemaps, palettes, and more.
+.Pp
+Note that options can be abbreviated as long as the abbreviation is unambiguous:
+.Fl Fl hei
+is
+.Fl Fl height ,
+but
+.Fl Fl he
+is invalid because it could also be
+.Fl Fl help .
+Single-letter options can also be grouped
+.Pq e.g. Ql -Dvo out.2bpp .
+The leftmost
+.Ql --
+prevents any arguments to its right from being treated as options.
+Numbers, unless noted otherwise, can be entered in decimal
+.Pq Ql 42 ,
+octal
+.Pq Ql 052 ,
+binary
+.Ql ( 0b101010
+or
+.Ql %101010 ) ,
+or hexadecimal
+.Ql ( 0x2A
+or
+.Ql $2a ) .
+.Pp
+The options are as follows:
+.Bl -tag -width Ds
+.It Fl Fl version
+Print
+.Nm Ap s
+version, and exit.
+.It Fl Fl help
+Print a help message, describing options more succinctly than what's below, and exit.
+.It Fl D , Fl Fl no-discard
+Disables discarding identical tiles (implies
+.Fl V
+and
+.Fl H ) .
+.It Fl H , Fl Fl no-horizontal-flip
+Disables discarding tiles by flipping them horizontally.
+.It Fl V , Fl Fl no-vertical-flip
+Disables discarding tiles by flipping them vertically.
+.It Fl v , Fl Fl verbose
+Enable describing actions taken to stderr.
+This option can be specified multiple times, increasing the verbosity each time.
+.It Fl a Ar path , Fl Fl out-attrmap Ar path
+File name to output the GBC attribute map to.
+Format is similar to the tilemap, see
+.Fl t
+for details.
+.It Fl B Ar palette , Fl Fl bgp Ar palette
+This image's DMG palette.
+If specified, colors will be ordered by luminance (TODO: link to section explaining luminance), and assigned... TODO: write adequate description.
+This is incompatible with
+.Fl P .
+.It Fl b Ar id , Fl Fl base Ar id
+The base ID used for tilemap output.
+Defaults to
+.Sy 0 .
+This may cause tile IDs to overflow, in which case they will silently wrap around (to accomodate loading more than 128 tiles starting at
+.Ad $8800 ) .
+If you do not want this, you can for example check the number of tiles using
+.Xr rgbasm 5 Ap s
+.Ic assert
+feature to check the tile data's size.
+For example:
+.Bd -literal -offset indent
+Stage1BossTiles:
+    INCBIN "src/res/stage1/boss.2bpp"
+
+    assert @ - Stage1BossTiles <= 69 * 16, \[rs]
+        "Stage 1 boss has more than 69 tiles!"
+.Ed
+.It Fl d Ar bpp , Fl Fl depth Ar bpp
+Number of bits per pixel.
+.Sy 1
+will only allow two colors per tile, while
+.Sy 2
+will allow four.
+These must be written verbatim (so for example
+.Ql 0b10
+is invalid), and no other values are allowed.
+.Pp
+The Game Boy does not natively support 1bpp tile data, but it can be processed (either during building or on the Game Boy) back to 2bpp.
+Defaults to
+.Sy 2 .
+.It Fl f Oo Ar threshold Oc , Fl Fl fuzzy Op Ar threshold
+Treat colors similar enough as identical.
+If
+.Ar threshold
+is given, it specifies the distance below which colors will be merged.
+(TODO: link to section explaining distance function, and merging process.)
+Otherwise, colors will be merged regardless of their distance, which is best used with
+.Fl P .
+.It Fl h Ar height , Fl Fl height Ar height
+Height in tiles of a "block". TODO: link here and in -w to section explaining what "blocks" are.
+.It Fl o Ar path , Fl Fl out-tiles Ar path
+File name to output the tiles to.
+Tiles will be written sequentially, with no padding.
+If 2bpp depth
+.Pq see Fl d
+was selected, tiles will be written in the Game Boy's native format (planar, little-endian).
+.It Fl P Ar palette , Fl Fl in-palette Ar palette
+Indicates to use a specific palette.
+If the
+.Ar palette
+argument begins with an at sign
+.Ql @ ,
+the rest will be treated as a file path, which must either be a PNG image, or a binary palette.
+Otherwise, the argument will be treated as a textual palette specification.
+See
+.Sx Palette spec
+below for information on the expected formats.
+.It Fl p Ar path , Fl Fl out-palette Ar path
+File name to output the palette to.
+The palettes will be written in the GBC's native format (little-endian RGB555), and unused color entries will be padded with magenta.
+Only the minimum amount of palettes will be emitted, however.
+.It Fl t Ar path , Fl Fl out-tilemap Ar path
+File name to output the tilemap to.
+The tilemap will be as large as the input slice
+.Pq see Fl S .
+For example, consider an input slice 160 pixels wide and 144 pixels tall, i.e. 20 tiles wide and 18 tiles tall.
+The tilemap will then be 20 \[tmu] 18 = 360 bytes, 18 rows of 20 tile IDs each.
+.It Fl S Ar slices , Fl Fl slices Ar slices
+Indicates how to read the input
+.Ar image .
+If the
+.Ar slices
+argument begins with an at sign
+.Ql @ ,
+the rest will be treated as a file path, which must contain a textual slice list.
+Otherwise, the textual slice list will be parsed from the argument itself.
+See
+.Sx Slice list
+for information on the expected format.
+.Pp
+If this option is given, the list must contain at least one slice.
+If there is more than one, a tilemap can't be produced (so using
+.Fl t
+is invalid).
+If this option is not given, a single slice will be used, spanning the entire input image.
+.It Fl s Oo Ar color Oc , Fl Fl sprite Op Ar color
+Enable OAM mode (TODO: describe it).
+If specified,
+.Ar color
+will be treated as the "background" color (TODO: describe how it is parsed).
+.It Fl w Ar width , Fl Fl width Ar width
+Width in tiles of a "block".
+.El
+.Ss Palette spec
+TODO
+.Ss Slice spec
+Slices are rectangular cutouts from an input image.
+They define which parts of the image will be converted; any pixels outside the slices are ignored.
+A slice is defined by its top-left pixel coordinates (x first, then y), its width, and its height, in this order.
+As with option parameters, numbers can be written in decimal, octal, or hexadecimal.
+(Binary is intentionally not supported.)
+The coordinates are 32-bit and in pixels, and need not be aligned to the tile grid.
+Width and height, however, are 8-bit (0\(en255) and in tiles.
+They must also be multiples of the block height and width respectively (see
+.Fl h
+and
+.Fl w ) .
+None of these four can be negative.
+.Pp
+Several slices can be specified on one line, but they must be separated by a comma.
+Trailing commas and empty lines are allowed.
+Any amount of consecutive whitespace is allowed between everything, though at least 1 is required between numbers.
+Comments begin with a hash
+.Ql #
+and last until the end of their line; they are entirely ignored.
+.Pp
+Example valid slice specification:
+.Bd -literal -offset indent
+8 0 1 2              # Exclamation mark
+5 5 1 1  ,  16 5 1 1 # Heart tiles
+
+0 0  2 2,            # Player
+.Ed
+.Pp
+This defines one slice starting at (x: 8, y: 0), 1 tile wide and 2 tiles tall; two slices starting respectively at (x: 5, y: 5) and (x: 16, y: 5), each 1 tile wide and tall; and lastly, one slice starting at (x: 0, y: 0), 2 tiles wide and tall.
+.Sh CONVERSION PROCESS
+TODO
+.Sh CAVEATS
+Optional parameters to options can cause confusion.
+For example,
+.Ql rsgbgfx -f -o hero.2bpp hero.png
+works, but
+.Ql rsgbgfx -o hero.2bpp -f hero.png
+will complain about missing the
+.Ar image
+argument, since
+.Ql hero.png
+is treated as
+.Fl f Ap s
+parameter.
+.Ql --
+can be used to avoid this:
+.Ql rsgbgfx -o hero.2bpp -f -- hero.png .
+.Pp
+Due to efficiency concerns, colors are truncated to 8-bit when read from PNG files.
+The PNG format supports 16-bit images, but
+.Nm
+will simply ignore the lower 8 bits.
+.Sh BUGS
+Please report bugs on
+.Lk https://github.com/ISSOtm/rsgbgfx GitHub .
+.Sh SEE ALSO
+.Xr rgbasm 1 ,
+.Xr rgblink 1 ,
+.Xr rgbgfx 1 ,
+.Xr rgbds 7
+.Sh HISTORY
+.Nm
+was written by
+.Lk https://github.com/ISSOtm ISSOtm
+based on many improvement requests for
+.Xr rgbgfx 1 ,
+which was originally written by
+.Lk https://github.com/stag019 stag019
+to be part of RGBDS.
