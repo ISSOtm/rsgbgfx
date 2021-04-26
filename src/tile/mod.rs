@@ -9,6 +9,9 @@ use arrayvec::ArrayVec;
 #[derive(Debug)]
 pub struct Tile<'a> {
     pixels: [[&'a Color; 8]; 8],
+    // Coordinates (for reporting location in errors)
+    x: u32,
+    y: u32,
 }
 
 impl<'a> Tile<'a> {
@@ -27,6 +30,8 @@ impl<'a> Tile<'a> {
                 .collect::<ArrayVec<_>>()
                 .into_inner()
                 .unwrap(),
+            x,
+            y,
         }
     }
 }

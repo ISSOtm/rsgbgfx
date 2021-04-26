@@ -182,7 +182,17 @@ will be treated as the "background" color (TODO: describe how it is parsed).
 Width in tiles of a "block".
 .El
 .Ss Palette spec
+A palette spec can be one of a textual spec, a PNG image, or a binary palette file.
+.Bl -tag
+.It Sy Textual spec
 TODO
+.It Sy PNG image
+TODO (TBD: "pixel" size, ordering)
+.It Sy Binary file
+The file must contain the colors in the GBC's native format (that is, little-endian RGB555), with no padding between them.
+Bit 15 of each color is ignored, as the console does.
+Note that if an odd amount of bytes is read, the last byte will be silently ignored.
+.El
 .Ss Slice spec
 Slices are rectangular cutouts from an input image.
 They define which parts of the image will be converted; any pixels outside the slices are ignored.
@@ -231,6 +241,13 @@ parameter.
 .Ql --
 can be used to avoid this:
 .Ql rsgbgfx -o hero.2bpp -f -- hero.png .
+.Pp
+.Nm
+only supports up to 65536 palettes.
+If that limitation somehow ends up being a problem for you, please contact us (see
+.Sx BUGS
+below).
+I'd be really curious to hear about it.
 .Pp
 Due to efficiency concerns, colors are truncated to 8-bit when read from PNG files.
 The PNG format supports 16-bit images, but

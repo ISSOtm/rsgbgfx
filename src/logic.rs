@@ -1,6 +1,7 @@
 use crate::args::Slice;
 use crate::img::{self, ImageReader, PngReader};
 use crate::tile::{Block, Palette, Tile};
+use std::convert::TryFrom;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
@@ -83,7 +84,7 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
         }
     };
 
-    // Extract tiles from the image; use the whole image if no slices are given
+    // Extract tiles from the image
     let mut blocks = Vec::with_capacity(nb_blocks);
 
     for slice in slices {
@@ -111,7 +112,8 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
         for ofs_x in 0..slice.width {
             for ofs_y in 0..slice.height {
                 let tile = Tile::from_image(&img, slice.x + ofs_x * 8, slice.y + ofs_y * 8);
-                let idx = ofs_x as usize * height_blk as usize + ofs_y as usize;
+                let idx = usize::try_from(ofs_x).unwrap() * usize::try_from(height_blk).unwrap()
+                    + usize::try_from(ofs_y).unwrap();
                 assert!(
                     idx < nb_blocks,
                     "Index {} is greater than expected {} blocks",

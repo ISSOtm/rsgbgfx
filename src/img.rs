@@ -31,6 +31,17 @@ mod color {
             }
         }
 
+        pub fn from_rgb555(color: u16, index: Option<u8>) -> Self {
+            Self::new(
+                Self::rgb_to_rgba((
+                    color as u8 & 0x1F,
+                    (color >> 5) as u8 & 0x1F,
+                    (color >> 10) as u8 & 0x1F,
+                )),
+                index,
+            )
+        }
+
         pub fn rgb_to_rgba((red, green, blue): (u8, u8, u8)) -> (u8, u8, u8, u8) {
             (red, green, blue, 255)
         }
@@ -58,7 +69,7 @@ mod color {
                 .sqrt()
                 .round();
             assert!(
-                0.0 <= dist && dist <= 255.0,
+                (0.0..=255.0).contains(&dist),
                 "Color distance not in u8 range! ({})",
                 dist
             );

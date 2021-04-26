@@ -7,6 +7,8 @@ edition = "2018"
 
 [dependencies]
 arrayvec = "0.5.2"
+funty = "1"
+nom = "6"
 
 [dependencies.clap]
 version = "3.0.0-beta.2"

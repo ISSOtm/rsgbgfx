@@ -2,6 +2,8 @@ use std::convert::TryFrom;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 
+/// Attempts to parse a byte-sized number (i.e. a u8) from a textual representation.
+/// Accepts +/- prefixes, decimal, binary (`0b`-prefixed), octal (`0`-prefixed), and hexadecimal (`0x`-prefixed) numbers.
 pub fn parse_byte(string: &str) -> Result<u8, ByteParseError> {
     let mut chars = string.trim().chars().peekable();
 

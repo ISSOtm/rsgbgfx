@@ -4,6 +4,7 @@ use std::fmt::{self, Display, Formatter};
 
 use std::io::{self};
 
+/// Parses a textual palette spec
 pub fn parse<I: Iterator<Item = char>>(string: I) -> Result<Palette, ParseError> {
     let pal = Palette::new();
     unimplemented!()

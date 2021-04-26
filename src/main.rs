@@ -8,7 +8,7 @@ mod util;
 
 use clap::{clap_app, crate_authors, crate_description, crate_version};
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 
 fn main() {
     // TODO: Color curves (convert colors emitted to the palette files into what would produce them if displayed by a certain console)
@@ -80,20 +80,25 @@ fn main() {
     let block_height = util::parse_byte(args.value_of("height").unwrap()).unwrap();
     let block_width = util::parse_byte(args.value_of("width").unwrap()).unwrap();
 
-    let slice_ret = args.value_of_os("in_slices").map(|arg| {
-        match args::process_leading_at(arg) {
-            Some(Ok(file)) => args::parse_slices(file, block_width, block_height),
+    let slice_ret = args
+        .value_of_os("in_slices")
+        .map(|arg| match args::read_leading_at(arg) {
+            Some(Ok(vec)) => {
+                args::parse_slices(&*vec, block_width, block_height).unwrap_or_else(|err| {
+                    eprintln!("Error parsing slices: {}", err);
+                    std::process::exit(1);
+                })
+            }
             Some(Err(err)) => {
                 eprintln!("Error opening slices file: {}", err);
-                std::process::exit(1);
+                std::process::exit(1)
             }
-            None => args::parse_slices(arg.to_string_lossy().as_bytes(), block_width, block_height),
-        }
-        .unwrap_or_else(|err| {
-            eprintln!("Error parsing slices: {}", err);
-            std::process::exit(1);
-        })
-    });
+            None => args::parse_slices(arg.to_string_lossy().as_bytes(), block_width, block_height)
+                .unwrap_or_else(|err| {
+                    eprintln!("Error parsing slices: {}", err);
+                    std::process::exit(1);
+                }),
+        });
     let (slices, nb_blocks) = match slice_ret {
         Some((slices, nb_blocks)) => {
             // The slice parser should treat `nb_blocks == 0` as an error
@@ -103,6 +108,7 @@ fn main() {
         None => (None, 0),
     };
 
+    // If a palette was supplied on the CLI, either read the "@file", or process it directly
     let palette = args
         .value_of_os("in_pal")
         .map(|arg| match args::process_leading_at(arg) {
@@ -132,17 +138,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    /* Before <path> was made required, this is how its lack was handled...
-    let path = match args.values_of("path") {
-        Some(path) => path,
-        None => {
-            eprintln!("FATAL: No input file");
-            let mut stderr = io::stderr();
-            app.write_help(&mut stderr).unwrap();
-            std::process::exit(1);
-        }
-    };
-    */
     let params = Params {
         verbosity,
 
