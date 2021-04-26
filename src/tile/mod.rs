@@ -1,7 +1,7 @@
 mod block;
 pub use block::Block;
 mod palette;
-pub use palette::Palette;
+pub use palette::Palettes;
 
 use crate::img::{Color, Image};
 use arrayvec::ArrayVec;

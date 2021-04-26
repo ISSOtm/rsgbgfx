@@ -1,13 +1,13 @@
 use crate::tile::Color;
-use std::convert::TryInto;
 
+/// An image's palette set
 #[derive(Debug)]
-pub struct Palette {
+pub struct Palettes {
     colors: Vec<[Color; 4]>,
     nb_colors: u16,
 }
 
-impl Palette {
+impl Palettes {
     pub fn new() -> Self {
         Self {
             colors: Vec::new(),

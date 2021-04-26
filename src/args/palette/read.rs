@@ -1,5 +1,5 @@
 use crate::img::Color;
-use crate::tile::Palette;
+use crate::tile::Palettes;
 use png::{Decoder, DecodingError};
 use std::error;
 use std::fmt::{self, Display, Formatter};
@@ -8,7 +8,7 @@ use std::io::{self, BufReader, Read};
 
 /// Reads a palette spec from the file it's given.
 /// Either a PNG file (as identified by the first 8 magic bytes), or a raw RGB555 palette file.
-pub fn read(file: File) -> Result<Palette, ReadError> {
+pub fn read(file: File) -> Result<Palettes, ReadError> {
     let mut file = BufReader::new(file);
 
     // Read the first 8 bytes, and see if they match the PNG magic bytes
@@ -21,7 +21,7 @@ pub fn read(file: File) -> Result<Palette, ReadError> {
     match result {
         Ok(()) if first8 == PNG_MAGIC => {
             // Magic bytes matched!
-            let pal = Palette::new();
+            let pal = Palettes::new();
             let png = Decoder::new(data);
 
             todo!()
@@ -35,7 +35,7 @@ pub fn read(file: File) -> Result<Palette, ReadError> {
 
         Ok(()) | Err(_) => {
             // Raw RGB555 colors
-            let mut pal = Palette::new();
+            let mut pal = Palettes::new();
             let mut color = [0; 2];
 
             loop {

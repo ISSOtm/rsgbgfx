@@ -1,12 +1,12 @@
-use crate::tile::Palette;
+use crate::tile::Palettes;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 
 use std::io::{self};
 
 /// Parses a textual palette spec
-pub fn parse<I: Iterator<Item = char>>(string: I) -> Result<Palette, ParseError> {
-    let pal = Palette::new();
+pub fn parse<I: Iterator<Item = char>>(string: I) -> Result<Palettes, ParseError> {
+    let pal = Palettes::new();
     unimplemented!()
 }
 
