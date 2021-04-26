@@ -9,6 +9,7 @@ mod util;
 use clap::{clap_app, crate_authors, crate_description, crate_version};
 use std::env;
 use std::io::{self, Read, Write};
+use std::process;
 
 fn main() {
     // TODO: Color curves (convert colors emitted to the palette files into what would produce them if displayed by a certain console)
@@ -164,7 +165,7 @@ fn main() {
 
     // Remember: use `String::from_utf8_lossy` to display file names
     if let Err(err) = logic::process_file(params) {
-        let mut stderr = io::stderr();
-        writeln!(stderr, "error: {}", err).unwrap();
+        eprintln!("error: {}", err);
+        process::exit(1);
     }
 }

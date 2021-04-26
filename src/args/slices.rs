@@ -6,7 +6,7 @@ use std::io::{self, Read};
 use std::iter::Peekable;
 
 // Everything's public because it's plain ol' data
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Slice {
     // In pixels
     pub x: u32,
@@ -14,6 +14,16 @@ pub struct Slice {
     // In tiles
     pub width: u32,
     pub height: u32,
+}
+
+impl Display for Slice {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            fmt,
+            "(x: {}, y: {}, width: {}, height: {})",
+            self.x, self.y, self.width, self.height
+        )
+    }
 }
 
 pub fn parse_slices<T: Read>(

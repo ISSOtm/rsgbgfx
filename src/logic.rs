@@ -94,7 +94,10 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
         debug_assert_eq!(slice.height % blk_height, 0);
         debug_assert_eq!(slice.width % blk_width, 0);
 
-        // TODO: Check starting and ending boundaries
+        // Check starting and ending boundaries
+        if img.width() - slice.x < slice.width * 8 || img.height() - slice.y < slice.height * 8 {
+            return Err(ProcessingError::OobSlice(slice.clone()));
+        }
 
         let base = blocks.len(); // Base index of blocks about to be added
         let height_blk = slice.height / blk_height; // Slice's height in blocks
@@ -148,6 +151,7 @@ pub enum ProcessingError<'a> {
     HeightNotBlock(u32, u8),
     WidthNotBlock(u32, u8),
     Io(path::Display<'a>, io::Error),
+    OobSlice(Slice),
     PngDecoding(png::DecodingError),
     PngReading(img::PngReadError),
 }
@@ -174,6 +178,7 @@ impl Display for ProcessingError<'_> {
                 width, block
             ),
             Io(name, err) => write!(fmt, "{}: {}", name, err),
+            OobSlice(slice) => write!(fmt, "Slice {} is not within the image's bounds", slice),
             PngDecoding(err) => err.fmt(fmt),
             PngReading(err) => err.fmt(fmt),
         }
@@ -188,6 +193,7 @@ impl error::Error for ProcessingError<'_> {
             HeightNotTiled(..) | WidthNotTiled(..) => None,
             HeightNotBlock(..) | WidthNotBlock(..) => None,
             Io(_, err) => Some(err),
+            OobSlice(..) => None,
             PngDecoding(err) => Some(err),
             PngReading(err) => Some(err),
         }
