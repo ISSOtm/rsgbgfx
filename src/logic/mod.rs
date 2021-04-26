@@ -1,6 +1,6 @@
 use crate::args::Slice;
 use crate::img::{self, ImageReader, PngReader};
-use crate::tile::{Block, Palette, Tile};
+use crate::tile::{Block, Palettes, Tile};
 use std::convert::TryFrom;
 use std::error;
 use std::fmt::{self, Display, Formatter};
@@ -21,7 +21,7 @@ pub struct Params<'a, P: AsRef<Path> + ?Sized> {
 
     pub slices: Option<Vec<Slice>>, // x, y (in pixels), w, h (in tiles)
     pub nb_blocks: usize,           // Hint to allocate the `Vec` up-front
-    pub palette: Option<Palette>,
+    pub palette: Option<Palettes>,
 
     pub no_discard: bool,
     pub no_horiz_flip: bool,
@@ -132,6 +132,7 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
     // Do this before palette allocation to reduce tiles to 4 colors, so that discarding
     // opportunities may be used as palette allocation hints
     // If a palette was specified on the command-line, ensure also that all colors match it
+
     // TODO
 
     // Index tiles based on their 4 colors
