@@ -144,7 +144,7 @@ fn try_parse_number<R: Read>(
     let (radix, mut number): (_, Option<u32>) = match input.peek() {
         // We'll let errors be handled below
         Some(Err(_)) => (10, None),
-        None => return Err(ParseError::UnexpectedEOF),
+        None => return Err(ParseError::UnexpectedEof),
         Some(Ok('$')) => {
             input
                 .next()
@@ -190,7 +190,7 @@ fn try_parse_number<R: Read>(
                 );
             }
             Some(Ok(c)) => break ParseError::IllegalChar(*c),
-            None => break ParseError::UnexpectedEOF,
+            None => break ParseError::UnexpectedEof,
         }
         input
             .next()
@@ -212,7 +212,7 @@ pub enum ParseError {
     NonIntWidth(u32, u8),
     TooLarge(&'static str),
     TooManyBlocks,
-    UnexpectedEOF,
+    UnexpectedEof,
 }
 
 impl Display for ParseError {
@@ -236,7 +236,7 @@ impl Display for ParseError {
             ),
             TooLarge(which) => write!(fmt, "{} too large", which),
             TooManyBlocks => write!(fmt, "Too many blocks, try splitting this image"),
-            UnexpectedEOF => write!(fmt, "Unexpected end of input"),
+            UnexpectedEof => write!(fmt, "Unexpected end of input"),
         }
     }
 }
@@ -262,7 +262,7 @@ impl error::Error for ParseError {
             NonIntHeight(..) | NonIntWidth(..) => None,
             TooLarge(..) => None,
             TooManyBlocks => None,
-            UnexpectedEOF => None,
+            UnexpectedEof => None,
         }
     }
 }
@@ -320,7 +320,7 @@ mod tests {
     }
 
     parse_test! {empty, {("")} => Err(Empty)}
-    parse_test! {partial, {("0")} => Err(UnexpectedEOF)}
+    parse_test! {partial, {("0")} => Err(UnexpectedEof)}
     parse_test! {unk_char, {("ù")} => Err(IllegalChar('ù'))}
 
     parse_test! {just_comment, {("# Hello yes I am comment")} => Err(Empty)}
