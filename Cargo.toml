@@ -17,3 +17,6 @@ features = [ "wrap_help" ]
 [dependencies.png]
 version = "0.16.8"
 default-features = false # We do not want to encode PNGs
+
+[profile.release]
+lto = true
