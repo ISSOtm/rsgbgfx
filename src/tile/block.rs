@@ -19,12 +19,21 @@ impl<'a> Block<'a> {
         }
     }
 
+    // FIXME: this isn't a good idea, it means the block can be in an invalid state...
     pub fn add_tile(&mut self, tile: Tile<'a>) {
         self.tiles.push(tile)
     }
 
     pub fn tiles(&self) -> &Vec<Tile<'a>> {
         &self.tiles
+    }
+
+    pub fn x(&self) -> u32 {
+        self.x
+    }
+
+    pub fn y(&self) -> u32 {
+        self.y
     }
 
     pub fn width(&self) -> usize {

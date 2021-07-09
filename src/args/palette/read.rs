@@ -34,18 +34,19 @@ pub fn read(file: File) -> Result<Palettes, ReadError> {
         }
 
         Ok(()) | Err(_) => {
-            // Raw RGB555 colors
+            // Raw RGBA8888 colors
             let mut pal = Palettes::new();
-            let mut color = [0; 2];
+            let mut color = [0; 4];
 
             loop {
                 match data.read_exact(&mut color) {
                     Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => break,
                     Err(err) => return Err(err.into()),
                     Ok(()) => {
-                        let color = u16::from(color[0]) + u16::from(color[1]) * 256;
-
-                        if pal.push(Color::from_rgb555(color, None)).is_err() {
+                        if pal
+                            .push(Color::new((color[0], color[1], color[2], color[3]), None))
+                            .is_err()
+                        {
                             return Err(ReadError::TooManyColors);
                         }
                     }

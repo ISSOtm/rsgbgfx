@@ -65,28 +65,48 @@ Print
 version, and exit.
 .It Fl Fl help
 Print a help message, describing options more succinctly than what's below, and exit.
-.It Fl D , Fl Fl no-discard
-Disables discarding identical tiles (implies
+.It Fl D , Fl Fl dedup
+Enables discarding identical tiles (implied by
 .Fl V
 and
 .Fl H ) .
-.It Fl H , Fl Fl no-horizontal-flip
-Disables discarding tiles by flipping them horizontally.
-.It Fl V , Fl Fl no-vertical-flip
-Disables discarding tiles by flipping them vertically.
+.It Fl H , Fl Fl horizontal-flip
+Enables discarding tiles by flipping them horizontally.
+.It Fl V , Fl Fl vertical-flip
+Enables discarding tiles by flipping them vertically.
 .It Fl v , Fl Fl verbose
 Enable describing actions taken to stderr.
 This option can be specified multiple times, increasing the verbosity each time.
+.Pp
+.Bq Not implemented yet.
 .It Fl a Ar path , Fl Fl out-attrmap Ar path
-File name to output the GBC attribute map to.
-Format is similar to the tilemap, see
-.Fl t
-for details.
+File name to output the GBC attribute map to; each attribute is one byte, and they are output top to bottom, left to right.
+Each byte's format is
+.Ql %0VH00PPP ,
+where:
+.Bl -tag -width 4n -compact
+.It Sy V
+Set if the tile is vertically flipped
+.Pq see Fl Fl no-vertical-flip .
+.It Sy H
+Set if the tile is horizontally flipped
+.Pq see Fl Fl no-horizontal-flip .
+.It Sy P
+The palette ID (taken modulo 8, though a warning will be produced if this chops off any bits).
+.El
+.Pp
+Note that if
+.Fl Fl out-palmap
+is also given, the palette bits will be forced to 0.
 .It Fl B Ar palette , Fl Fl bgp Ar palette
 This image's DMG palette.
 If specified, colors will be ordered by luminance (TODO: link to section explaining luminance), and assigned... TODO: write adequate description.
 This is incompatible with
-.Fl P .
+.Fl P
+and
+.Fl s .
+.Pp
+.Bq Not implemented yet.
 .It Fl b Ar id , Fl Fl base Ar id
 The base ID used for tilemap output.
 Defaults to
@@ -114,18 +134,10 @@ will allow four.
 These must be written verbatim (so for example
 .Ql 0b10
 is invalid), and no other values are allowed.
-.Pp
-The Game Boy does not natively support 1bpp tile data, but it can be processed (either during building or on the Game Boy) back to 2bpp.
 Defaults to
+.Pp
+The Game Boy does not natively support 1bpp tile data, but it can be processed (either during building the ROM, or on the fly on Game Boy) back to 2bpp.
 .Sy 2 .
-.It Fl f Oo Ar threshold Oc , Fl Fl fuzzy Op Ar threshold
-Treat colors similar enough as identical.
-If
-.Ar threshold
-is given, it specifies the distance below which colors will be merged.
-(TODO: link to section explaining distance function, and merging process.)
-Otherwise, colors will be merged regardless of their distance, which is best used with
-.Fl P .
 .It Fl h Ar height , Fl Fl height Ar height
 Height in tiles of a "block". TODO: link here and in -w to section explaining what "blocks" are.
 .It Fl o Ar path , Fl Fl out-tiles Ar path
@@ -149,12 +161,32 @@ below for information on the expected formats.
 File name to output the palette to.
 The palettes will be written in the GBC's native format (little-endian RGB555), and unused color entries will be padded with magenta.
 Only the minimum amount of palettes will be emitted, however.
+.It Fl Fl out-palette-rgba8888 Ar path
+Same as
+.Fl Fl out-palette ,
+but writes colors as RGBA8888 instead.
 .It Fl t Ar path , Fl Fl out-tilemap Ar path
 File name to output the tilemap to.
-The tilemap will be as large as the input slice
-.Pq see Fl S .
+Each entry is the low byte of the corresponding tile ID; if you want to use more than 256 tiles, see
+.Fl Fl out-himap .
+.Pp
+The tilemap will be as large as the sum of all input slices
+.Pq see Fl S ,
+as measured in tiles.
 For example, consider an input slice 160 pixels wide and 144 pixels tall, i.e. 20 tiles wide and 18 tiles tall.
 The tilemap will then be 20 \[tmu] 18 = 360 bytes, 18 rows of 20 tile IDs each.
+.Pp
+Entries are written top to bottom, left to right.
+This is intended to help support 8x16 OAM mode.
+.It Fl Fl out-himap Ar path
+Same as
+.Fl Fl out-tilemap ,
+but entries are the high bytes of the tile IDs, instead of the low bytes.
+This is so that the output tilemap stays in the native format.
+.It Fl Fl out-palmap Ar path
+File name to output a palette map to.
+One entry per block, top to bottom, left to right.
+Each entry is a 16-bit index, stored as little-endian.
 .It Fl S Ar slices , Fl Fl slices Ar slices
 Indicates how to read the input
 .Ar image .
@@ -169,29 +201,29 @@ See
 for information on the expected format.
 .Pp
 If this option is given, the list must contain at least one slice.
-If there is more than one, a tilemap can't be produced (so using
-.Fl t
-is invalid).
 If this option is not given, a single slice will be used, spanning the entire input image.
 .It Fl s Oo Ar color Oc , Fl Fl sprite Op Ar color
 Enable OAM mode (TODO: describe it).
 If specified,
 .Ar color
 will be treated as the "background" color (TODO: describe how it is parsed).
+.Pp
+.Bq Not implemented yet.
 .It Fl w Ar width , Fl Fl width Ar width
 Width in tiles of a "block".
 .El
 .Ss Palette spec
 A palette spec can be one of a textual spec, a PNG image, or a binary palette file.
-.Bl -tag
+.Bl -tag -width Ds
 .It Sy Textual spec
 TODO
 .It Sy PNG image
 TODO (TBD: "pixel" size, ordering)
 .It Sy Binary file
-The file must contain the colors in the GBC's native format (that is, little-endian RGB555), with no padding between them.
-Bit 15 of each color is ignored, as the console does.
-Note that if an odd amount of bytes is read, the last byte will be silently ignored.
+The file must contain the colors in the usual RGBA8888 format: red, green, blue, then alpha, each one byte, an alpha of 255 indicating full opacity.
+Note that, fonr convenience, all colors with an alpha of 0 will be treated as the same.
+(TODO: enforce that.)
+Note that any excess bytes at the end of the file will be silently ignored.
 .El
 .Ss Slice spec
 Slices are rectangular cutouts from an input image.
@@ -228,19 +260,19 @@ TODO
 .Sh CAVEATS
 Optional parameters to options can cause confusion.
 For example,
-.Ql rsgbgfx -f -o hero.2bpp hero.png
+.Ql rsgbgfx -s -o hero.2bpp hero.png
 works, but
-.Ql rsgbgfx -o hero.2bpp -f hero.png
+.Ql rsgbgfx -o hero.2bpp -s hero.png
 will complain about missing the
 .Ar image
 argument, since
 .Ql hero.png
 is treated as
-.Fl f Ap s
+.Fl s Ap s
 parameter.
 .Ql --
 can be used to avoid this:
-.Ql rsgbgfx -o hero.2bpp -f -- hero.png .
+.Ql rsgbgfx -o hero.2bpp -s -- hero.png .
 .Pp
 .Nm
 only supports up to 65536 palettes.

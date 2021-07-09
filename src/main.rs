@@ -1,37 +1,42 @@
 mod args;
-
 mod img;
 mod logic;
-use logic::{Fuzziness, Params};
+use logic::Params;
 mod tile;
 mod util;
 
 use clap::{clap_app, crate_authors, crate_description, crate_version};
+use std::convert::TryFrom;
 use std::env;
-use std::io::{self, Read, Write};
+use std::fs::File;
+use std::io;
+use std::io::Write;
 use std::process;
 
 fn main() {
     // TODO: Color curves (convert colors emitted to the palette files into what would produce them if displayed by a certain console)
+    // TODO: A flag to respect the input PNG's palette IDs
     let mut app = clap_app!(rsgbgfx =>
     (version: crate_version!())
     (author: crate_authors!())
     (about: crate_description!())
-    (@arg no_discard: -D --"no-discard" "Disable discarding identical tiles (implies -V and -H)")
-    (@arg no_horiz_flip: -H --"no-horizontal-flip" "Disable discarding tiles by flipping them horizontally")
-    (@arg no_vert_flip: -V --"no-vertical-flip" "Disable discarding tiles by flipping them vertically")
+    (@arg dedup: -D --"deduplicate" "Enable discarding identical tiles (implies -V and -H)")
+    (@arg horiz_flip: -H --"horizontal-flip" "Enable discarding tiles by flipping them horizontally")
+    (@arg vert_flip: -V --"vertical-flip" "Enable discarding tiles by flipping them vertically")
     (@arg verbose: -v --verbose ... "Enable describing actions taken to stderr, repeat for more details")
     (@arg sprite: -s --sprite [color] #{0,1} "Enable OAM mode, and possibly force the background color") // TODO: "#n" to pick the nth color in the input palette, otherwise a color
-    (@arg fuzzy: -f --fuzzy [threshold] #{0,1} {util::parse_byte} "Treat colors similar enough as identical")
     (@arg base: -b --base [id] {util::parse_byte} default_value[0] "The base ID for tiles")
     (@arg bgp: -B --bgp [palette] {util::parse_byte} "This image's DMG palette")
     (@arg bpp: -d --depth [bpp] possible_value[1 2] default_value[2] "Number of bits per pixel")
     (@arg height: -h --height [height] default_value[1] "Height in tiles of a \"block\"")
     (@arg width: -w --width [width] default_value[1] "Width in tiles of a \"block\"")
     (@arg out_tiles: -o --"out-tiles" [path] "File name to output the tiles to")
-    (@arg in_pal: -P --"in-palette" [palette] "Palette to use, or \"@path\" to read a file")
-    (@arg out_pal: -p --"out-palette" [path] "File name to output the palette to")
+    (@arg in_pal: -P --"in-palette" [palette] "Palette to use, or \"@path\" to read a RGBA8888 file")
+    (@arg out_pal: -p --"out-palette" [path] "File name to output the native palettes to")
+    (@arg out_pal_rgba8888: --"out-palette-rgba8888" [path] "File name to output the RGBA8888 palettes to")
+    (@arg out_pal_map: --"out-palmap" [path] "File name to output the palette map to")
     (@arg out_map: -t --"out-tilemap" [path] "File name to output the tilemap to")
+    (@arg out_himap: --"out-himap" [path] "File name to output the \"high\" tilemap to")
     (@arg out_attr: -a --"out-attrmap" [path] "File name to output the GBC attribute map to")
     (@arg in_slices: -S --slices [slices] "Slices to use, or \"@path\" to read a file")
     (@arg path: * "Path to the input image")
@@ -59,20 +64,12 @@ fn main() {
         Err(e) => e.exit(),
     };
 
-    // TODO: sprite, out_tiles, out_pal, in_map, out_map, in_attr, out_attr
-    let no_discard = args.is_present("no_discard");
-    let no_horiz_flip = args.is_present("no_horiz_flip");
-    let no_vert_flip = args.is_present("no_vert_flip");
+    let dedup = args.is_present("dedup");
+    let horiz_flip = args.is_present("horiz_flip");
+    let vert_flip = args.is_present("vert_flip");
     let verbosity = args.occurrences_of("verbose");
     // All the `unwrap`s are because clap checked them already (required argument,
     // `util::parse_byte` already run as a validator, etc.)
-    let fuzziness = args
-        .values_of("fuzzy")
-        .map_or(Fuzziness::Strict, |mut values| {
-            values.next().map_or(Fuzziness::Closest, |string| {
-                Fuzziness::Threshold(util::parse_byte(string).unwrap())
-            })
-        });
     let base = util::parse_byte(args.value_of("base").unwrap()).unwrap();
     let bgp = args
         .value_of("bgp")
@@ -126,26 +123,12 @@ fn main() {
                 std::process::exit(1);
             }),
         });
-
-    let tiles_path = args.value_of_os("out_tiles");
-    let map_path = args.value_of_os("out_map");
-    let attr_path = args.value_of_os("out_attr");
-
-    // If out_map and/or out_attr is set, there may only be one slice
-    if (map_path.is_some() || attr_path.is_some())
-        && slices.as_ref().map_or(false, |slices| slices.len() != 1)
-    {
-        eprintln!("Error: A tilemap or attrmap cannot be produced from more than one slice");
-        std::process::exit(1);
-    }
+    // TODO: if both fuzziness and palette are given, warn if there is ambiguity
 
     let params = Params {
         verbosity,
 
         path: args.value_of_os("path").unwrap(),
-        tiles_path,
-        map_path,
-        attr_path,
 
         block_height,
         block_width,
@@ -154,18 +137,136 @@ fn main() {
         nb_blocks,
         palette,
 
-        no_discard,
-        no_horiz_flip,
-        no_vert_flip,
-        fuzziness,
+        dedup,
+        horiz_flip,
+        vert_flip,
         base,
         bgp,
         bpp,
     };
 
+    // Now, process all of that!
+
     // Remember: use `String::from_utf8_lossy` to display file names
-    if let Err(err) = logic::process_file(params) {
+    let (palettes, pal_map, tile_data) = logic::process_file(params).unwrap_or_else(|err| {
         eprintln!("error: {}", err);
         process::exit(1);
+    });
+
+    let block_size = u16::from(block_height) * u16::from(block_width);
+
+    // Output time!
+    // TODO: use `BufWriter`s
+
+    if let Some(path) = args.value_of_os("out_pal") {
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening palette output file: {}", err),
+            Ok(mut file) => (|| {
+                for palette in &palettes {
+                    for color in palette {
+                        file.write_all(&color.to_rgb555().to_le_bytes())?;
+                    }
+                }
+                Ok(())
+            })()
+            .unwrap_or_else(|err: io::Error| eprintln!("Error writing palette: {}", err)),
+        }
+    }
+
+    if let Some(path) = args.value_of_os("out_pal_rgba8888") {
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening RGBA8888 palette output file: {}", err),
+            Ok(mut file) => (|| {
+                for palette in &palettes {
+                    for color in palette {
+                        file.write_all(&color.rgba())?;
+                    }
+                }
+                Ok(())
+            })()
+            .unwrap_or_else(|err: io::Error| eprintln!("Error writing RGBA8888 palette: {}", err)),
+        }
+    }
+
+    if let Some(path) = args.value_of_os("out_tiles") {
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening tile output file: {}", err),
+            Ok(mut file) => (|| {
+                for tile in tile_data.tiles() {
+                    tile.write_to(&mut file, bpp)?;
+                }
+                Ok(())
+            })()
+            .unwrap_or_else(|err: io::Error| eprintln!("Error writing tiles: {}", err)),
+        }
+    }
+
+    let pal_map_path = args.value_of_os("out_palmap");
+    if let Some(path) = pal_map_path {
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening palette map output file: {}", err),
+            Ok(mut file) => (|| {
+                for entry in &pal_map {
+                    file.write_all(&entry.to_le_bytes())?;
+                }
+                Ok(())
+            })()
+            .unwrap_or_else(|err: io::Error| eprintln!("Error writing palette map: {}", err)),
+        }
+    }
+
+    let output_tilemap = |index, file: &mut File| {
+        for base_id in tile_data.base_tile_ids() {
+            for ofs in 0..(block_size) {
+                // Only write the bottom byte
+                file.write_all(&(base_id + ofs).to_le_bytes()[index..=index])?;
+            }
+        }
+        Ok(())
+    };
+    if let Some(path) = args.value_of_os("out_map") {
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening tilemap output file: {}", err),
+            Ok(mut file) => output_tilemap(0, &mut file)
+                .unwrap_or_else(|err: io::Error| eprintln!("Error writing tilemap: {}", err)),
+        }
+    }
+    if let Some(path) = args.value_of_os("out_himap") {
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening high tilemap output file: {}", err),
+            Ok(mut file) => output_tilemap(1, &mut file)
+                .unwrap_or_else(|err: io::Error| eprintln!("Error writing high tilemap: {}", err)),
+        }
+    }
+
+    if let Some(path) = args.value_of_os("out_attrmap") {
+        // TODO: warn if more than 8 palettes and palette map is not demanded
+        if palettes.len() > 8 && !args.is_present("out-palmap") {
+            eprintln!(
+                "Warning: {} palettes generated, but palette map not requested",
+                palettes.len()
+            );
+        }
+
+        match File::open(path) {
+            Err(err) => eprintln!("Error opening attrmap output file: {}", err),
+            Ok(mut file) => (|| {
+                assert_eq!(tile_data.attrs().len(), pal_map.len());
+
+                for (attr, pal) in tile_data.attrs().iter().zip(pal_map.iter()) {
+                    for _ in 0..block_size {
+                        let pal_id = if args.is_present("out-palmap") {
+                            0
+                        } else {
+                            u8::try_from(pal & 7).unwrap()
+                        };
+
+                        file.write_all(&[*attr | pal_id])?;
+                    }
+                }
+                Ok(())
+            })()
+            .unwrap_or_else(|err: io::Error| eprintln!("Error writing attrmap: {}", err)),
+        }
     }
 }

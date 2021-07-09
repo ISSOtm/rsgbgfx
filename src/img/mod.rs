@@ -11,7 +11,7 @@ mod color {
     // Implementing `PartialEq` in this way makes identical colors with a different palette index
     // different. This is intentional, so that a palette may contain duplicates of a given color
     // if the user insists on it (either via a PNG palette, or a CLI specification)
-    #[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq, Clone)]
     pub struct Color {
         red: u8,
         green: u8,
@@ -31,6 +31,10 @@ mod color {
             }
         }
 
+        pub fn rgba(&self) -> [u8; 4] {
+            [self.red, self.green, self.blue, self.alpha]
+        }
+
         pub fn from_rgb555(color: u16, index: Option<u8>) -> Self {
             Self::new(
                 Self::rgb_to_rgba((
@@ -40,6 +44,10 @@ mod color {
                 )),
                 index,
             )
+        }
+
+        pub fn to_rgb555(&self) -> u16 {
+            u16::from(self.red) | u16::from(self.green) << 5 | u16::from(self.blue) << 10
         }
 
         pub fn rgb_to_rgba((red, green, blue): (u8, u8, u8)) -> (u8, u8, u8, u8) {

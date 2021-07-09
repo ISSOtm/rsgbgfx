@@ -1,4 +1,6 @@
 use crate::tile::Color;
+use std::convert::TryInto;
+use std::ops::Deref;
 
 /// An image's palette set
 #[derive(Debug)]
@@ -33,5 +35,21 @@ impl Palettes {
 
     pub fn nb_colors(&self) -> u16 {
         self.nb_colors
+    }
+
+    pub fn nb_palettes(&self) -> u16 {
+        self.colors.len().try_into().unwrap()
+    }
+
+    pub fn colors(self) -> Vec<[Color; 4]> {
+        self.colors
+    }
+}
+
+impl Deref for Palettes {
+    type Target = [[Color; 4]];
+
+    fn deref(&self) -> &Self::Target {
+        &self.colors
     }
 }

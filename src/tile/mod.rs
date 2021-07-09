@@ -1,5 +1,7 @@
 mod block;
 pub use block::Block;
+use std::ops::Index;
+use std::slice::SliceIndex;
 mod palette;
 pub use palette::Palettes;
 
@@ -33,5 +35,52 @@ impl<'a> Tile<'a> {
             x,
             y,
         }
+    }
+
+    pub fn pixels(&'a self) -> PixelIterator<'a> {
+        PixelIterator::new(self)
+    }
+}
+
+impl<
+        'a,
+        I: SliceIndex<[&'a Color], Output = &'a Color>,
+        J: SliceIndex<[[&'a Color; 8]], Output = [&'a Color; 8]>,
+    > Index<(I, J)> for Tile<'a>
+{
+    type Output = &'a Color;
+
+    fn index(&self, (x, y): (I, J)) -> &Self::Output {
+        &self.pixels[y][x]
+    }
+}
+
+pub struct PixelIterator<'a> {
+    tile: &'a Tile<'a>,
+    x: usize,
+    y: usize,
+}
+
+impl<'a> PixelIterator<'a> {
+    fn new(tile: &'a Tile) -> Self {
+        Self { tile, x: 0, y: 0 }
+    }
+}
+
+impl<'a> Iterator for PixelIterator<'a> {
+    type Item = &'a Color;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.y == 8 {
+            return None;
+        }
+
+        let color = &self.tile.pixels[self.y][self.x];
+        self.x += 1;
+        if self.x == 8 {
+            self.x = 0;
+            self.y += 1;
+        }
+        Some(color)
     }
 }

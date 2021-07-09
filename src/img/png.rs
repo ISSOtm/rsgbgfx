@@ -187,7 +187,8 @@ mod iter {
                         Sixteen => unreachable!(), // Handled above
                     };
 
-                    let mask = (1 << len) - 1;
+                    // We do shift by 8, but never by 0
+                    let mask = 0xFF >> (8 - len);
                     self.shift -= len;
                     let val = self.buf[self.index] >> self.shift & mask;
 

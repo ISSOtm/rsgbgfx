@@ -1,20 +1,23 @@
 use crate::args::Slice;
-use crate::img::{self, ImageReader, PngReader};
+use crate::img::{self, Color, ImageReader, PngReader};
 use crate::tile::{Block, Palettes, Tile};
 use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::error;
 use std::fmt::{self, Display, Formatter};
 use std::fs::File;
 use std::io;
+use std::ops::Deref;
 use std::path::{self, Path};
+
+mod palettes;
+mod tiles;
+pub use tiles::TileCollection;
 
 pub struct Params<'a, P: AsRef<Path> + ?Sized> {
     pub verbosity: u64,
 
     pub path: &'a P,
-    pub tiles_path: Option<&'a P>,
-    pub map_path: Option<&'a P>,
-    pub attr_path: Option<&'a P>,
 
     pub block_height: u8,
     pub block_width: u8,
@@ -23,27 +26,17 @@ pub struct Params<'a, P: AsRef<Path> + ?Sized> {
     pub nb_blocks: usize,           // Hint to allocate the `Vec` up-front
     pub palette: Option<Palettes>,
 
-    pub no_discard: bool,
-    pub no_horiz_flip: bool,
-    pub no_vert_flip: bool,
-    pub fuzziness: Fuzziness,
+    pub dedup: bool,
+    pub horiz_flip: bool,
+    pub vert_flip: bool,
     pub base: u8,
     pub bgp: Option<u8>,
     pub bpp: u8,
 }
 
-#[derive(Debug)]
-pub enum Fuzziness {
-    /// Not specified on CLI
-    /// Differs from `Threshold(0)` in that even identical colors won't be merged
-    Strict,
-    /// Specified on the CLI without an argument
-    Closest,
-    /// Specified on the CLI with an argument
-    Threshold(u8),
-}
-
-pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), ProcessingError> {
+pub fn process_file<P: AsRef<Path> + ?Sized>(
+    params: Params<P>,
+) -> Result<(Vec<[Color; 4]>, Vec<u16>, TileCollection), ProcessingError> {
     let (blk_width, blk_height) = (
         u32::from(params.block_width),
         u32::from(params.block_height),
@@ -128,21 +121,65 @@ pub fn process_file<P: AsRef<Path> + ?Sized>(params: Params<P>) -> Result<(), Pr
         }
     }
 
-    // Reduce colors depending on fuzziness
-    // Do this before palette allocation to reduce tiles to 4 colors, so that discarding
-    // opportunities may be used as palette allocation hints
-    // If a palette was specified on the command-line, ensure also that all colors match it
+    // Generate the palette map, which maps one palette per block
+    // If a palette spec was given on the command line, ensure that tiles match it
+    // Otherwise, generate palettes from the colors used by tiles, checking that there are only 4 per tile
 
-    // TODO
+    let mut pal_map = vec![0; nb_blocks]; // One entry per block, top to bottom, left to right
 
-    // Index tiles based on their 4 colors
-    // This is used to check that all input tiles are 4 colors,
-    // and to make it easier to permute colors in the tile for palette allocation
-    // Additionally, if a palette was specified on the command-line, check that it contains all
-    // of the image's colors; if not, report the `--fuzzy` radius that would make it work.
+    let palettes = if let Some(pal) = params.palette {
+        // Check that the palette's size matches the bpp setting
+        for (i, palette) in pal.deref().iter().enumerate() {
+            if palette.len() > 1 << params.bpp {
+                return Err(ProcessingError::BppMismatch(i, palette.len(), params.bpp));
+            }
+        }
 
-    todo!();
-    Ok(())
+        for (i, block) in blocks.iter().enumerate() {
+            // Find a suitable palette for the whole block
+            let mut is_candidate = vec![true; pal.nb_palettes().into()];
+
+            for tile in block.tiles() {
+                for pixel in tile.pixels() {
+                    for i in 0..usize::from(pal.nb_palettes()) {
+                        // Don't perform a costly check if the palette has already been eliminated
+                        // TODO: if the color has already been seen, no need to look it up again
+                        if is_candidate[i] && !pal[i].contains(pixel) {
+                            is_candidate[i] = false;
+                        }
+                    }
+                }
+            }
+
+            // Since the palette is already given on the CLI, we don't need to try to optimize: just pick one
+            if let Some((index, _)) = is_candidate.iter().enumerate().find(|(_, &yes)| yes) {
+                pal_map[i] = index.try_into().unwrap();
+            } else {
+                return Err(ProcessingError::NoPaletteFor(
+                    block.x(),
+                    block.y(),
+                    block.width(),
+                    block.height(),
+                ));
+            }
+        }
+
+        pal.colors()
+    } else {
+        palettes::pack_palettes(&blocks, &mut pal_map, params.bpp)?
+    };
+
+    // Generate tile data, keeping them grouped by blocks
+
+    let mut tile_data = TileCollection::new(params.dedup, params.horiz_flip, params.vert_flip);
+
+    for (block, pal_id) in blocks.iter().zip(&pal_map) {
+        tile_data.add_block(block, &palettes[usize::from(*pal_id)]);
+    }
+
+    // TODO: try rotating colors in the palettes to improve flipping optimization
+
+    Ok((palettes, pal_map, tile_data))
 }
 
 #[derive(Debug)]
@@ -151,10 +188,13 @@ pub enum ProcessingError<'a> {
     WidthNotTiled(u32),
     HeightNotBlock(u32, u8),
     WidthNotBlock(u32, u8),
+    BppMismatch(usize, usize, u8),
     Io(path::Display<'a>, io::Error),
+    NoPaletteFor(u32, u32, usize, usize),
     OobSlice(Slice),
     PngDecoding(png::DecodingError),
     PngReading(img::PngReadError),
+    TooManyColors(u32, u32, usize, usize, u8),
 }
 
 impl Display for ProcessingError<'_> {
@@ -178,10 +218,36 @@ impl Display for ProcessingError<'_> {
                 "Image width ({} tiles) cannot be divided by block's ({} tiles)",
                 width, block
             ),
+            BppMismatch(id, cnt, bpp) => write!(
+                fmt,
+                "Palette #{} contains {} colors, but {}bpp palettes can only contain up to {}",
+                id,
+                cnt,
+                bpp,
+                1 << bpp
+            ),
             Io(name, err) => write!(fmt, "{}: {}", name, err),
+            // Report the block's size in pixels
+            NoPaletteFor(x, y, w, h) => write!(
+                fmt,
+                "No palette for block (x: {}, y: {}, width: {}, height: {})",
+                x,
+                y,
+                w * 8,
+                h * 8
+            ),
             OobSlice(slice) => write!(fmt, "Slice {} is not within the image's bounds", slice),
             PngDecoding(err) => err.fmt(fmt),
             PngReading(err) => err.fmt(fmt),
+            TooManyColors(x, y, w, h, bpp) => write!(
+                fmt,
+                "Block (x: {}, y: {}, width: {}, height: {}) contains more than {} colors",
+                x,
+                y,
+                w * 8,
+                h * 8,
+                1 << bpp
+            ),
         }
     }
 }
@@ -193,10 +259,13 @@ impl error::Error for ProcessingError<'_> {
         match self {
             HeightNotTiled(..) | WidthNotTiled(..) => None,
             HeightNotBlock(..) | WidthNotBlock(..) => None,
+            BppMismatch(..) => None,
             Io(_, err) => Some(err),
+            NoPaletteFor(..) => None,
             OobSlice(..) => None,
             PngDecoding(err) => Some(err),
             PngReading(err) => Some(err),
+            TooManyColors(..) => None,
         }
     }
 }
